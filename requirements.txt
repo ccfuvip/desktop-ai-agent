@@ -1,0 +1,16 @@
+PyQt6>=6.7.0
+mss>=10.0.0
+uiautomation>=2.0.15
+pyautogui>=0.9.54
+keyboard>=0.13.5
+pywin32>=308
+playwright>=1.48.0
+chromadb>=0.6.0
+httpx>=0.28.0
+faster-whisper>=1.1.0
+duckduckgo-search>=6.0.0
+requests>=2.31.0
+feedparser>=6.0.0
+beautifulsoup4>=4.12.0
+networkx>=3.2.0
+pyyaml>=6.0.0

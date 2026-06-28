@@ -1,0 +1,71 @@
+﻿# System Configuration for Desktop AI Agent
+
+system:
+  name: "Desktop_AI_Agent"
+  version: "1.0.0"
+  gpu: "RTX_5080_16GB"
+  cuda_version: "13.3"
+  python_version: "3.11"
+
+llama_cpp:
+  text_model:
+    path: "models/Hermes-3-Llama-3.1-8B.Q6_K.gguf"
+    port: 8080
+    n_gpu_layers: 99
+    context_size: 8192
+    max_tokens: 2048
+    
+  vision_model:
+    path: "models/Qwen2.5-VL-7B-Instruct-Q6_K.gguf"
+    mmproj: "models/mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf"
+    port: 8081
+    n_gpu_layers: 99
+    context_size: 4096
+    max_tokens: 1024
+
+awareness:
+  capture_fps: 5
+  ui_refresh_ms: 500
+  mouse_tracking: true
+  resolution: "720p"
+
+control:
+  click_delay: 0.1
+  type_speed: 0.02
+  safe_zone:
+    x: 0
+    y: 0
+
+# Self-Evolution System Configuration
+evolution:
+  learning:
+    auto_learn: true
+    learn_interval_hours: 24
+    search_engines:
+      - duckduckgo
+      - bing
+    knowledge_sources:
+      - github_trending
+      - hacker_news
+      - arxiv
+      - tech_blogs
+    max_knowledge_items: 50000
+
+  upgrade:
+    auto_check_updates: true
+    check_interval_hours: 12
+    model_download_dir: "./temp/models"
+    sandbox_test: true
+    keep_backup: true
+
+  optimization:
+    performance_monitoring: true
+    auto_resource_scheduling: true
+    strategy_reflection: true
+    max_reflection_history: 1000
+
+  collaboration:
+    mcp_enabled: true
+    mcp_registry_url: "https://registry.modelcontextprotocol.io"
+    max_concurrent_agents: 5
+    agent_communication: "shared_memory"
