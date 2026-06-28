@@ -30,6 +30,7 @@ import io
 import win32gui
 import win32con
 import win32api
+import win32process
 
 
 @dataclass
@@ -368,7 +369,7 @@ class DesktopAwarenessEngine:
                     return True
                 
                 class_name = win32gui.GetClassName(hwnd)
-                _, pid = win32gui.GetWindowThreadProcessId(hwnd)
+                _, pid = win32process.GetWindowThreadProcessId(hwnd)
                 
                 rect = win32gui.GetWindowRect(hwnd)
                 
@@ -422,7 +423,7 @@ class DesktopAwarenessEngine:
                             title=child.Name,
                             class_name=child.ControlTypeName,
                             hwnd=child.NativeWindowHandle,
-                            rect=(rect.left, rect.top, rect.width, rect.height),
+                            rect=(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top),
                         ))
                     except Exception:
                         pass
@@ -440,7 +441,7 @@ class DesktopAwarenessEngine:
                     title=hwnd.Name,
                     class_name=hwnd.ControlTypeName,
                     hwnd=hwnd.NativeWindowHandle,
-                    rect=(rect.left, rect.top, rect.width, rect.height),
+                    rect=(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top),
                 )
             return None
         except Exception:
@@ -467,7 +468,7 @@ class DesktopAwarenessEngine:
                 name=control.Name,
                 control_type=control.ControlTypeName,
                 automation_id=control.AutomationId,
-                rect=(rect.left, rect.top, rect.width, rect.height),
+                rect=(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top),
                 is_enabled=control.IsEnabled,
                 is_keyboard_focusable=control.IsKeyboardFocusable,
                 value=control.ValueValue if hasattr(control, 'ValueValue') else "",

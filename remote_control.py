@@ -408,16 +408,53 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
     
     def _cmd_desktop_status(self, params, source, priority):
         if self.perception:
+            return self._safe_quick_scan()
+        return {"success": False, "error": "Perception engine not available"}
+
+    def _safe_quick_scan(self) -> dict:
+        """调用 awareness.quick_scan, 必要时初始化 Windows COM"""
+        import pythoncom
+        coinit = False
+        try:
+            try:
+                pythoncom.CoInitialize()
+                coinit = True
+            except pythoncom.com_error:
+                pass
             state = self.perception.quick_scan()
             return {"success": True, "data": state}
-        return {"success": False, "error": "Perception engine not available"}
+        except Exception as e:
+            return {"success": False, "error": f"quick_scan failed: {e}"}
+        finally:
+            if coinit:
+                try:
+                    pythoncom.CoUninitialize()
+                except Exception:
+                    pass
     
     def _cmd_take_screenshot(self, params, source, priority):
         if self.perception:
-            img = self.perception.capture_screen()
+            from datetime import datetime
             import base64
-            b64 = base64.b64encode(img).decode() if img else ""
-            return {"success": True, "image_base64": b64}
+            from pathlib import Path
+            from project_paths import PROJECT_DIR
+            try:
+                img = self.perception.capture_screen()
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = params.get("filename") or f"screenshot_{ts}.png"
+                if not Path(filename).is_absolute():
+                    filename = str(PROJECT_DIR / "data" / "screenshots" / filename)
+                Path(filename).parent.mkdir(parents=True, exist_ok=True)
+                Path(filename).write_bytes(img)
+                return {
+                    "success": True,
+                    "file_path": filename,
+                    "size_bytes": len(img),
+                    "include_base64": params.get("include_base64", False),
+                    "image_base64": base64.b64encode(img).decode() if params.get("include_base64") else None,
+                }
+            except Exception as e:
+                return {"success": False, "error": str(e)}
         return {"success": False, "error": "Perception engine not available"}
     
     def _cmd_click(self, params, source, priority):
@@ -475,8 +512,11 @@ class RemoteControlHandler(BaseHTTPRequestHandler):
     
     def _cmd_list_windows(self, params, source, priority):
         if self.perception:
-            state = self.perception.quick_scan()
-            return {"success": True, "windows": state.get("window_list", [])}
+            result = self._safe_quick_scan()
+            if result.get("success"):
+                data = result["data"]
+                return {"success": True, "windows": data.get("window_list", []), "total": data.get("total_windows", 0)}
+            return result
         return {"success": False, "error": "Perception engine not available"}
     
     def _cmd_general_task(self, command, params, source, priority):

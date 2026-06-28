@@ -326,10 +326,13 @@ class EvolutionDashboard(QWidget):
 # ---------------------------------------------------------------------------
 
 class ChatPanel(QFrame):
+    _response_ready = pyqtSignal(str)
+
     """聊天面板 — 显示用户和Agent的对话"""
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._response_ready.connect(self._on_response_ready)
         self.setObjectName("chatPanel")
         self._setup_ui()
     
@@ -414,9 +417,18 @@ class ChatPanel(QFrame):
 
         # 占位提示
         placeholder = self._add_message("⏳ 正在调用 Agent ...", "agent")
+        # 找到占位里的 bubble label
+        bubble = None
+        try:
+            if placeholder is not None and placeholder.layout() and placeholder.layout().count() > 1:
+                bubble = placeholder.layout().itemAt(1).widget()
+        except Exception:
+            pass
 
         def _do_call():
+            import traceback
             try:
+                print(f"[ui] POST agent_chat: {text[:60]}", flush=True)
                 resp = httpx.post(
                     "http://127.0.0.1:9999/api/command",
                     json={
@@ -438,30 +450,43 @@ class ChatPanel(QFrame):
                     content = f"{content}\n\n[步骤: {steps}]"
             except Exception as e:
                 content = f"❌ 网络错误: {e}"
-
-            # 替换占位气泡
-            QTimer.singleShot(0, lambda: self._replace_last_agent(placeholder, content))
+                traceback.print_exc()
+            print(f"[ui] got response, len={len(content)}", flush=True)
+            # 通过信号发回主线程
+            self._response_ready.emit(content)
 
         threading.Thread(target=_do_call, daemon=True).start()
 
-    def _replace_last_agent(self, old_frame, new_text):
-        """把最后一条 agent 消息替换成 new_text"""
+    def _on_response_ready(self, content: str):
+        """主线程槽: 把占位气泡的文本替换成真实回复"""
+        print(f"[ui] slot fired, content_len={len(content)}", flush=True)
         try:
-            idx = self.chat_layout.indexOf(old_frame)
-            if idx >= 0:
-                # 找到里面的 bubble (第二个 widget)
-                bubble = old_frame.layout().itemAt(1).widget() if old_frame.layout().count() > 1 else None
-                if bubble is not None:
-                    bubble.setText(new_text)
-                    return
-        except Exception:
-            pass
-        # 兜底: 直接追加
-        self._add_message(new_text, "agent")
+            # 找最后一个 agent 气泡 (即 placeholder 本身)
+            last_idx = self.chat_layout.count() - 1
+            while last_idx >= 0:
+                item = self.chat_layout.itemAt(last_idx)
+                w = item.widget() if item else None
+                if w is not None and w.layout() and w.layout().count() > 1:
+                    b = w.layout().itemAt(1).widget()
+                    if b is not None:
+                        b.setText(content)
+                        print("[ui] updated last agent bubble", flush=True)
+                        return
+                last_idx -= 1
+            # 兜底
+            self._add_message(content, "agent")
+            print("[ui] fallback appended", flush=True)
+        except Exception as e:
+            print(f"[ui] slot crashed: {e}", flush=True)
+            import traceback; traceback.print_exc()
+            self._add_message(f"❌ UI 更新失败: {e}", "agent")
+
+    # ' + MARKER + '
     
     def _add_message(self, text: str, sender: str):
         """添加一条消息到聊天面板"""
         msg_frame = QFrame()
+        msg_frame.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         msg_layout = QHBoxLayout(msg_frame)
         msg_layout.setContentsMargins(5, 3, 5, 3)
         
@@ -469,6 +494,9 @@ class ChatPanel(QFrame):
             # 用户消息 — 右对齐
             msg_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
             bubble = QLabel(text)
+            bubble.setWordWrap(True)
+            bubble.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+            bubble.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             bubble.setStyleSheet(f"""
                 QLabel {{
                     background-color: {DARK_THEME['accent']};
@@ -476,7 +504,7 @@ class ChatPanel(QFrame):
                     border-radius: 12px;
                     padding: 8px 12px;
                     font-size: 13px;
-                    max-width: 500px;
+                    max-width: 720px; min-width: 60px;
                 }}
             """)
             msg_layout.addWidget(bubble, 0, Qt.AlignmentFlag.AlignRight)
@@ -487,6 +515,9 @@ class ChatPanel(QFrame):
             msg_layout.addWidget(avatar)
             
             bubble = QLabel(text)
+            bubble.setWordWrap(True)
+            bubble.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+            bubble.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             bubble.setStyleSheet(f"""
                 QLabel {{
                     background-color: {DARK_THEME['bg_secondary']};
@@ -494,12 +525,13 @@ class ChatPanel(QFrame):
                     border-radius: 12px;
                     padding: 8px 12px;
                     font-size: 13px;
-                    max-width: 500px;
+                    max-width: 720px; min-width: 60px;
                 }}
             """)
             msg_layout.addWidget(bubble, 0, Qt.AlignmentFlag.AlignLeft)
         
         self.chat_layout.addWidget(msg_frame)
+        return msg_frame
         
         # 自动滚动到底部
         self.chat_container.parentWidget().parentWidget().verticalScrollBar().setValue(
@@ -577,6 +609,7 @@ class MainWindow(QMainWindow):
     
     def __init__(self, config: Dict[str, Any] = None):
         super().__init__()
+
         self.config = config or {}
         self._setup_ui()
         self._apply_theme()

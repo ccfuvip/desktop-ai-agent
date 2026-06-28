@@ -25,6 +25,7 @@ import logging
 import win32gui
 import win32con
 import win32api
+import win32process
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field, asdict
 from enum import Enum
@@ -284,17 +285,50 @@ class DesktopAutomationController:
     # ---- 窗口操作 ----
     
     def _action_focus_window(self, action: Dict) -> ActionResult:
-        """聚焦窗口"""
+        """聚焦窗口 (尽力而为: 后台进程调 SetForegroundWindow 会被系统拒绝, 此时改用 BringWindowToTop + ShowWindow)"""
+        import ctypes
         title = action.get("target", "") or action.get("title", "")
         hwnd = self._find_window_by_title(title)
-        if hwnd:
+        if not hwnd:
+            return ActionResult(success=False, action_type="focus_window",
+                              error=f"未找到窗口: {title}")
+        foreground_now = win32gui.GetForegroundWindow() == hwnd
+        if foreground_now:
+            return ActionResult(success=True, action_type="focus_window",
+                              description=f"已是前台窗口: {title}")
+        try:
             if win32gui.IsIconic(hwnd):
                 win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-            win32gui.SetForegroundWindow(hwnd)
+            # 先尝试 SetForegroundWindow (用 AttachThreadInput 绕过)
+            set_ok = False
+            try:
+                ctypes.windll.user32.AllowSetForegroundWindow(-1)
+                cur_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+                target_tid, _ = win32process.GetWindowThreadProcessId(hwnd)
+                attached = False
+                if cur_tid != target_tid:
+                    ctypes.windll.user32.AttachThreadInput(cur_tid, target_tid, True)
+                    attached = True
+                try:
+                    win32gui.SetForegroundWindow(hwnd)
+                    set_ok = True
+                finally:
+                    if attached:
+                        ctypes.windll.user32.AttachThreadInput(cur_tid, target_tid, False)
+            except Exception:
+                pass
+            # 即使 SetForegroundWindow 失败, ShowWindow + BringWindowToTop 也能让窗口置顶
+            win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+            win32gui.BringWindowToTop(hwnd)
+            if set_ok or win32gui.GetForegroundWindow() == hwnd:
+                return ActionResult(success=True, action_type="focus_window",
+                                  description=f"聚焦窗口: {title}")
             return ActionResult(success=True, action_type="focus_window",
-                              description=f"聚焦窗口: {title}")
-        return ActionResult(success=False, action_type="focus_window",
-                          error=f"未找到窗口: {title}")
+                              description=f"已置顶窗口 (前台权限不足): {title}",
+                              metadata={"warning": "SetForegroundWindow 被系统拒绝, 改用 BringWindowToTop; 点击仍可正常工作"})
+        except Exception as e:
+            return ActionResult(success=False, action_type="focus_window",
+                              error=f"聚焦失败: {e}")
     
     def _action_minimize_window(self, action: Dict) -> ActionResult:
         """最小化窗口"""
